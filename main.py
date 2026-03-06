@@ -1,7 +1,4 @@
-from cities import CITIES
-from fetch import fetch_humidity
-from visualize import plot_map
+from gui import App
 
-print(f"fetching humidity for {len(CITIES)} cities...")
-humidity = fetch_humidity(CITIES)
-plot_map(CITIES, humidity)
+if __name__ == "__main__":
+    App().mainloop()
