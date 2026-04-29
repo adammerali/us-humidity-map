@@ -1,3 +1,5 @@
+import json
+import os
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -8,9 +10,36 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import requests
 
 from cities import CITIES
 from fetch import fetch_humidity
+
+GEOJSON_URL   = "https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json"
+GEOJSON_CACHE = "states.json"
+
+
+def load_states():
+    if not os.path.exists(GEOJSON_CACHE):
+        r = requests.get(GEOJSON_URL, timeout=15)
+        r.raise_for_status()
+        with open(GEOJSON_CACHE, "w") as f:
+            f.write(r.text)
+    with open(GEOJSON_CACHE) as f:
+        return json.load(f)
+
+
+def draw_states(ax, states):
+    for feature in states["features"]:
+        geom = feature["geometry"]
+        polys = (geom["coordinates"] if geom["type"] == "Polygon"
+                 else [p for p in geom["coordinates"]])
+        for poly in polys:
+            coords = poly if geom["type"] == "Polygon" else poly[0]
+            xs = [c[0] for c in coords]
+            ys = [c[1] for c in coords]
+            ax.fill(xs, ys, color="#2a2a3e", zorder=1)
+            ax.plot(xs, ys, color="#45475a", linewidth=0.5, zorder=2)
 
 # Bounding box for continental US + insets for AK/HI
 CONUS_XLIM = (-128, -65)
@@ -30,7 +59,16 @@ class App(tk.Tk):
         self.resizable(True, True)
 
         self._humidity: dict = {}
+        self._states = None
         self._build_ui()
+        threading.Thread(target=self._load_states_bg, daemon=True).start()
+
+    def _load_states_bg(self):
+        try:
+            self._states = load_states()
+            self.after(0, self._redraw)
+        except Exception:
+            pass  # map still works without outlines
 
     # ---- UI construction ----
 
@@ -109,6 +147,9 @@ class App(tk.Tk):
             ax.annotate(f"{h}%", (lon, lat),
                         textcoords="offset points", xytext=(5, 4),
                         fontsize=5.5, color="#cdd6f4", zorder=6)
+
+        if self._states:
+            draw_states(ax, self._states)
 
         if not hasattr(self, "_cbar") or self._cbar is None:
             self._cbar = self._fig.colorbar(sc, ax=ax, fraction=0.025, pad=0.02)
